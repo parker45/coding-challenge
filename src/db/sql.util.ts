@@ -12,5 +12,11 @@ export const queryExec = (db: any, sql: string[]): Promise<void> => Promise.reso
 export const formatSqlValue = (v: string | number | boolean | null) => {
     // build a function that will properly handle the quoting of values
     // for the generated sql statement
+    if (v === null) {
+        return 'null';
+    }
+    if (typeof v === 'string') {
+        return `'${v}'`;
+    }
     return v;
 };

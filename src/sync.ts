@@ -52,9 +52,8 @@ export async function skuBatchToInserts(skuBatchIdsToInsert: string[]): Promise<
   const inserts: string[] = skuBatchIdsToInsert
     .reduce((arr: RecordWithWMS[], skuBatchId: string): RecordWithWMS[] => {
       const skuBatchRecordFromAppDb: SkuBatchToSkuId | undefined = appData.find(
-        (skuBatchToSkuId: SkuBatchToSkuId): boolean => skuBatchToSkuId.skuBatchId != skuBatchId,
+        (skuBatchToSkuId: SkuBatchToSkuId): boolean => skuBatchToSkuId.skuBatchId == skuBatchId,
       );
-
       if (!skuBatchRecordFromAppDb) {
         logger.error(`no records found in app SkuBatch [skuBatchId=${skuBatchId}}]`);
         badSkuBatchCounter.count += 1;
@@ -80,7 +79,7 @@ export async function getDeltas(): Promise<string[]> {
     const inventorySkuBatchIds: Set<string> = new Set<string>(skuBatchIdsFromInventoryDb
         .map((r: { skuBatchId: string }) => r.skuBatchId));
     return [...new Set<string>(skuBatchIdsFromAppDb.map((r: { id: string }) => r.id))]
-        .filter((x: string) => inventorySkuBatchIds.has(x));
+        .filter((x: string) => !inventorySkuBatchIds.has(x));
   } catch (err) {
     logger.error('error querying databases for skuBatchIds');
     logger.error(err);
@@ -94,10 +93,11 @@ export async function getDeltas(): Promise<string[]> {
  * @param delta
  */
 export const makeUpdates = (delta: skuBatchUpdate): string[] => {
-    // convert updates to sql and push updates
+  // convert updates to sql and push updates
+  // I assume the statement below should ouput valid SQL so I have changed the join from ; to , 
   const updatesToMake = delta.updates
     .map((ud: inventoryUpdate) => `${snakeCase(ud.field)} = ${formatSqlValue(ud.newValue)}`)
-    .join('; ');
+    .join(', ');
 
   return [
     getUpdateForSkuBatchRecord('inventory', updatesToMake, delta.skuBatchId),
@@ -135,17 +135,15 @@ export const findDeltas = (
         .reduce((recordUpdates: inventoryUpdate[], key: string): inventoryUpdate[] => {
           const inventoryValue = inventoryRecord[key as keyof typeof inventoryRecord];
           const appValue = appSbd[key as keyof typeof appSbd];
-
-        if (key == 'skuId' && inventoryValue != null) {
-            // if the key is skuId and the current value is set, we won't update
-            return recordUpdates;
-        }
+          if (key == 'skuId' && inventoryValue != null) {
+              // if the key is skuId and the current value is set, we won't update
+              return recordUpdates;
+          }
 
           if (inventoryValue != appValue) {
             recordUpdates.push({ field: key, newValue: appValue });
           }
-
-          return recordUpdates;
+            return recordUpdates;
         }, [] as inventoryUpdate[]);
 
       return {
@@ -153,7 +151,7 @@ export const findDeltas = (
         updates,
       };
     })
-    .filter((sbu: skuBatchUpdate) => sbu.updates.length == 0);
+    .filter((sbu: skuBatchUpdate) => sbu.updates.length > 0);
 };
 
 /**
@@ -175,6 +173,8 @@ export async function findChangesBetweenDatasets(): Promise<string[]> {
       if (appSkuBatchData.length != inventorySkuBatchData.length) {
         // implement the logic to log a message with the IDs missing from app
         // data that exist in the inventory data
+        const missingSkuBatchIds: string[] = inventorySkuBatchData.filter((sbd: SkuBatchData) => !appSkuBatchData.includes(sbd)).map((sbd: SkuBatchData) => sbd.skuBatchId);
+        logger.warn(`mismatch in skuBatch data between app and inventory items with the following IDs are missing from app data: ${missingSkuBatchIds.join(', ')}`);
       }
 
       // push our new sql updates into the accumulator list

@@ -5,6 +5,7 @@ import {
   skuBatchToInserts,
 } from './sync';
 import {skuBatchUpdate} from "./interfaces.util";
+import exp from 'constants';
 
 describe('sync', () => {
   beforeEach(() => {
@@ -88,17 +89,76 @@ describe('sync', () => {
       expect(deltas[0].updates[0].newValue).toBe(5);
     });
 
-    // it('should not change the skuId if already set', async () => {
-    //
-    // });
+    it('should not change the skuId if already set', async () => {
+      const appData = [{
+        skuBatchId: '1',
+        skuId: '1',
+        wmsId: '1',
+        quantityPerUnitOfMeasure: 5,
+        isArchived: false,
+        isDeleted: false,
+      }];
 
-    // it('should pick up change to skuId if not set', async () => {
-    //
-    // });
+      const inventoryData = [{
+        skuBatchId: '1',
+        skuId: '2',
+        wmsId: '1',
+        quantityPerUnitOfMeasure: 5,
+        isArchived: false,
+        isDeleted: false,
+      }];
 
-    // it('should pick up change to wmsId', async () => {
-    //
-    // });
+      const deltas: skuBatchUpdate[] = findDeltas(appData, inventoryData);
+      expect(deltas.length).toBe(0);
+    });
+
+    it('should pick up change to skuId if not set', async () => {
+      const appData = [{ 
+        skuBatchId: '1',
+        skuId: '2',
+        wmsId: '1',
+        quantityPerUnitOfMeasure: 5,
+        isArchived: false,
+        isDeleted: false,
+      }];
+      const inventoryData = [{
+        skuBatchId: '1',
+        skuId: null,
+        wmsId: '1',
+        quantityPerUnitOfMeasure: 5,
+        isArchived: false,
+        isDeleted: false,
+      }];
+      const deltas: skuBatchUpdate[] = findDeltas(appData, inventoryData);
+      expect(deltas.length).toBe(1);
+      expect(deltas[0].updates.length).toBe(1);
+      expect(deltas[0].updates[0].field).toBe('skuId');
+      expect(deltas[0].updates[0].newValue).toBe('2');
+    });
+
+    it('should pick up change to wmsId', async () => {
+      const appData = [{ 
+        skuBatchId: '1',
+        skuId: '1',
+        wmsId: '2',
+        quantityPerUnitOfMeasure: 5,
+        isArchived: false,
+        isDeleted: false,
+      }];
+      const inventoryData = [{
+        skuBatchId: '1',
+        skuId: '1',
+        wmsId: '1',
+        quantityPerUnitOfMeasure: 5,
+        isArchived: false,
+        isDeleted: false,
+      }];
+      const deltas: skuBatchUpdate[] = findDeltas(appData, inventoryData);
+      expect(deltas.length).toBe(1);
+      expect(deltas[0].updates.length).toBe(1);
+      expect(deltas[0].updates[0].field).toBe('wmsId');
+      expect(deltas[0].updates[0].newValue).toBe('2');
+    });
 
     it('should find changes between datasets', async () => {
       await expect(
@@ -112,9 +172,24 @@ describe('sync', () => {
     });
   });
 
-  // describe('.makeUpdates', () => {
-    // it('should create a list of string sql updates based on a update delta', async () => {
-    //
-    // })
-  // })
+  describe('.makeUpdates', () => {
+    it('should create a list of string sql updates based on a update delta', async () => {
+      const skuBatchUpdate: skuBatchUpdate = 
+        {
+          skuBatchId: '1',
+          updates: [
+            { field: 'isDeleted', newValue: true },
+            { field: 'isArchived', newValue: true },
+            { field: 'quantityPerUnitOfMeasure', newValue: 5 },
+            { field: 'wmsId', newValue: null },
+            { field: 'skuId', newValue: '1'}
+          ],
+        }
+
+      const updates = makeUpdates(skuBatchUpdate);
+      expect(updates.length).toBe(2);
+      expect(updates[0]).toBe("update inventory set is_deleted = true, is_archived = true, quantity_per_unit_of_measure = 5, wms_id = null, sku_id = '1' where sku_batch_id = '1'");
+      expect(updates[1]).toBe("update inventory_aggregate set is_deleted = true, is_archived = true, quantity_per_unit_of_measure = 5, wms_id = null, sku_id = '1' where sku_batch_id = '1'");
+    })
+  })
 });
